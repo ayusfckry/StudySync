@@ -1,0 +1,150 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - uid: string (required) - The unique ID of the user.
+    //   - name: string (required, size < 50) - The display name of the user.
+    //   - email: string (required, format: email) - The email address of the user.
+    //   - level: number (optional, >= 0) - The current level of the survivor.
+    //   - xp: number (optional, >= 0) - The current experience points.
+    //   - rank: string (optional, size < 20) - The survival rank.
+    //   - streak: number (optional, >= 0) - Current study streak in days.
+    //   - hoursStudied: number (optional, >= 0) - Total hours spent studying.
+    //   - tasksCompleted: number (optional, >= 0) - Total number of completed tasks.
+    //
+    // Collection: tasks
+    // Document ID: {taskId}
+    // Fields:
+    //   - uid: string (required, immutable) - The ID of the user who owns the task.
+    //   - title: string (required, size < 100) - The title of the mission objective.
+    //   - subject: string (required, size < 50) - The subject area of the mission.
+    //   - deadline: string (required, format: date) - The deadline for the mission.
+    //   - completed: bool (required) - Whether the mission is completed.
+    //
+    // Collection: sessions
+    // Document ID: {sessionId}
+    // Fields:
+    //   - uid: string (required, immutable) - The ID of the user who performed the session.
+    //   - startTime: string (required, format: date-time) - When the session started.
+    //   - endTime: string (optional, format: date-time) - When the session ended.
+    //   - duration: number (required, >= 0) - Duration in seconds.
+    //   - mode: string (required, enum: ['work', 'break']) - The mode of the session.
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isRequestOwner() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.uid;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "ghadiayushi@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string &&
+        dateStr.matches("^\\d{4}-\\d{2}-\\d{2}.*");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'name', 'email', 'level', 'xp', 'rank', 'streak', 'hoursStudied', 'tasksCompleted', 'role']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 50 &&
+             data.email is string && isValidEmail(data.email) &&
+             (!('level' in data) || (data.level is number && data.level >= 0)) &&
+             (!('xp' in data) || (data.xp is number && data.xp >= 0)) &&
+             (!('rank' in data) || (data.rank is string && data.rank.size() < 20)) &&
+             (!('streak' in data) || (data.streak is number && data.streak >= 0)) &&
+             (!('hoursStudied' in data) || (data.hoursStudied is number && data.hoursStudied >= 0)) &&
+             (!('tasksCompleted' in data) || (data.tasksCompleted is number && data.tasksCompleted >= 0));
+    }
+
+    function isValidTask(data) {
+      return hasOnlyAllowedFields(['uid', 'title', 'subject', 'deadline', 'completed']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.subject is string && data.subject.size() > 0 && data.subject.size() < 50 &&
+             isValidDateString(data.deadline) &&
+             data.completed is bool;
+    }
+
+    function isValidSession(data) {
+      return hasOnlyAllowedFields(['uid', 'startTime', 'endTime', 'duration', 'mode']) &&
+             data.uid is string && data.uid == request.auth.uid &&
+             isValidDateString(data.startTime) &&
+             (!('endTime' in data) || isValidDateString(data.endTime)) &&
+             data.duration is number && data.duration >= 0 &&
+             data.mode in ['work', 'break'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated(); // Allow reading other survivors for matching
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.role == resource.data.role || isAdmin());
+    }
+
+    match /tasks/{taskId} {
+      allow read: if isDocOwner();
+      allow create: if isRequestOwner() && isValidTask(request.resource.data);
+      allow update: if isDocOwner() && isValidTask(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isDocOwner();
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if isDocOwner();
+      allow create: if isRequestOwner() && isValidSession(request.resource.data);
+      allow update: if isDocOwner() && isValidSession(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow delete: if isDocOwner();
+    }
+
+    // Default deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

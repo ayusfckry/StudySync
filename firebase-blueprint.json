@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user statistics and profile information.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The unique ID of the user." },
+        "name": { "type": "string", "description": "The display name of the user." },
+        "email": { "type": "string", "description": "The email address of the user." },
+        "level": { "type": "integer", "description": "The current level of the survivor." },
+        "xp": { "type": "integer", "description": "The current experience points." },
+        "rank": { "type": "string", "description": "The survival rank (e.g., Veteran, Rookie)." },
+        "streak": { "type": "integer", "description": "Current study streak in days." },
+        "hoursStudied": { "type": "number", "description": "Total hours spent studying." },
+        "tasksCompleted": { "type": "integer", "description": "Total number of completed tasks." }
+      },
+      "required": ["uid", "name", "email"]
+    },
+    "Task": {
+      "title": "Study Task",
+      "description": "A study objective or mission.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The ID of the user who owns the task." },
+        "title": { "type": "string", "description": "The title of the mission objective." },
+        "subject": { "type": "string", "description": "The subject area of the mission." },
+        "deadline": { "type": "string", "format": "date", "description": "The deadline for the mission." },
+        "completed": { "type": "boolean", "description": "Whether the mission is completed." }
+      },
+      "required": ["uid", "title", "subject", "deadline", "completed"]
+    },
+    "Session": {
+      "title": "Study Session",
+      "description": "A record of a study session.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "The ID of the user who performed the session." },
+        "startTime": { "type": "string", "format": "date-time", "description": "When the session started." },
+        "endTime": { "type": "string", "format": "date-time", "description": "When the session ended." },
+        "duration": { "type": "integer", "description": "Duration in seconds." },
+        "mode": { "type": "string", "enum": ["work", "break"], "description": "The mode of the session." }
+      },
+      "required": ["uid", "startTime", "duration", "mode"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Study task documents."
+    },
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Study session records."
+    }
+  }
+}
